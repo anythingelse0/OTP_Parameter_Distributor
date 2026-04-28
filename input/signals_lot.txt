@@ -1,0 +1,19 @@
+; Test signals for LOT_ID format simulation
+; Format: logic [msb:lsb] signal_name [value]
+
+; LOT_ID_DIGIT_0: bits [5:0] (6 bits) -> Byte 0 bits [5:0]
+logic [5:0] LOT_ID_DIGIT_0 0x0
+
+; LOT_ID_DIGIT_1: split across Byte 0 and Byte 1
+; bits [7:6] in Byte 0, bits [11:8] in Byte 1 (6 bits total)
+logic [7:6] LOT_ID_DIGIT_1_low 0x0
+logic [11:8] LOT_ID_DIGIT_1_high 0x0
+
+; LOT_ID_DIGIT_2: bits [15:12] (4 bits) -> Byte 1 bits [7:4]
+logic [15:12] LOT_ID_DIGIT_2 0x0
+
+; More bytes
+logic [23:16] LOT_ID_DIGIT_3 0x0
+logic [31:24] LOT_ID_DIGIT_4 0x0
+logic [39:32] status 0x0
+logic [40:40] valid 0x1

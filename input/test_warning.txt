@@ -1,0 +1,4 @@
+input[63:0] test_uuid                                          ，  //efuse_default_value: 0
+input[3:0]  test_nibble                                        ，  //efuse_default_value: 0x15
+input[1:0]  test_2bit                                          ，  //efuse_default_value: 0x5
+input      test_1bit                                          ，  //efuse_default_value: 0x7

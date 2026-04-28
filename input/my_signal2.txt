@@ -1,0 +1,28 @@
+// top
+input[63:0] uuid                                                 ，  //efuse_default_value: 0
+input[15:0] chip_id                                              ，  //efuse_default_value:0x9008
+ 
+// adif
+    input               efuse_val_csr_cfg_xtal_div2_en           ，  //efuse_default_value:	0x0
+    input               efuse_val_csr_digpll_cfg_cp_current_from ，  //efuse_default_value:	0x5
+    input               efuse_val_csr_digpll_cfg_r3              ，  //efuse_default_value:	0x5
+    input               efuse_val_csr_digpll_en_vco_bias_lpf     ，  //efuse_default_value:	0x2
+    input               efuse_val_csr_digpll_ensw_vco_core       ，  //efuse_default_value:	0x2
+    input               efuse_val_csr_digpll_ensw_vco_pre        ，  //efuse_default_value:	0x3
+    input               efuse_val_csr_digpll_inner_ldo_en        ，  //efuse_default_value:	0x4
+    input               efuse_val_csr_xtal_div2_en               ，  //efuse_default_value:	0x0
+    input               efuse_val_csr_xtal_div2_en_ana           ，  //efuse_default_value:	0x1
+    input               efuse_val_csr_xtal_ldo09_en              ，  //efuse_default_value:	0x1
+    input               efuse_val_csr_xtal_ldo26_en              ，  //efuse_default_value:	0x0
+    input [1:0]         efuse_val_csr_digpll_cfg_bias_vco        ，  //efuse_default_value:	0x3
+    input [1:0]         efuse_val_csr_digpll_cfg_c1              ，  //efuse_default_value:	0x4
+    input [1:0]         efuse_val_csr_digpll_cfg_c2              ，  //efuse_default_value:	0x1
+    input [1:0]         efuse_val_csr_digpll_cfg_ldo_vsel        ，  //efuse_default_value:	0x1
+    input [1:0]         efuse_val_csr_digpll_cfg_r2              ，  //efuse_default_value:	0x0
+    input [2:0]         efuse_val_csr_digpll_cfg_cp_current      ，  //efuse_default_value:	0x1
+    input [2:0]         efuse_val_csr_digpll_cfg_vco_band        ，  //efuse_default_value:	0x0
+    input [2:0]         efuse_val_csr_digpll_cfg_vco_up          ，  //efuse_default_value:	0x0
+    input [2:0]         efuse_val_csr_xtal_ldo09_vsel            ，  //efuse_default_value:	0x0
+    input [2:0]         efuse_val_csr_xtal_ldo26_vsel            ，  //efuse_default_value:	0x0
+    input [3:0]         efuse_val_csr_digpll_bias_ext            ，  //efuse_default_value:	0x0
+    input [3:0]         efuse_val_csr_digpll_bias_int            ，  //efuse_default_value:	0x0

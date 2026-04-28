@@ -1,0 +1,20 @@
+; Test signals with value-based inversion
+; value = 0: direct assignment
+; value != 0 with width == 1: full inversion (~)
+; value != 0 with width > 1: per-bit inversion
+
+; Signal with value=0, no inversion (direct assignment)
+logic [31:0] addr 0x00000000
+
+; Signal with value=0, no inversion
+logic [15:0] data 0x0
+
+; Single bit with value!=0, full inversion (~)
+logic [0:0] valid 0x1
+
+; 4-bit signal with mixed value bits, per-bit inversion
+; value 0b1010 = 0xA, bits: bit3=1(invert), bit2=0(no), bit1=1(invert), bit0=0(no)
+logic [3:0] ctrl 0xA
+
+; 8-bit signal with all bits inverted (value=0xFF)
+logic [7:0] mask 0xFF
