@@ -64,6 +64,23 @@ class DynamicSignalParser:
     def __init__(self):
         self.signals: List[Signal] = []
         self.total_width: int = 0
+        self._signal_name_counter: Dict[str, int] = {}  # 跟踪信号名出现次数，用于重复检测
+
+    def _get_unique_signal_name(self, name: str) -> str:
+        """
+        生成唯一的信号名。
+        如果信号名已存在，添加后缀 _0, _1, _2...
+        保持原始名首次出现的无需后缀，从第二次开始出现才加后缀。
+        """
+        if name not in self._signal_name_counter:
+            # 首次出现，直接使用原名称
+            self._signal_name_counter[name] = 0
+            return name
+        else:
+            # 重复出现，增加计数并添加后缀
+            self._signal_name_counter[name] += 1
+            suffix = self._signal_name_counter[name]
+            return f"{name}_{suffix}"
 
     def _validate_signal_values(self) -> None:
         """验证信号值的合法性"""
@@ -120,6 +137,7 @@ class DynamicSignalParser:
         # 清空之前的数据
         self.signals = []
         self.total_width = 0
+        self._signal_name_counter = {}  # 重置重复名称计数器
 
         # 检测格式并解析
         if self._is_csv_format(signal_text):
@@ -156,8 +174,10 @@ class DynamicSignalParser:
         """
         # 匹配 input 声明行
         # 位宽支持：[msb:lsb] 或 [msb_expr:lsb] 其中 msb_expr 可以是 "N-1" 格式
+        # 支持格式：input [7:0] name, 或 input logic [7:0] name, 或 input name,
         pattern = re.compile(
             r"^[ \t]*input\s*"
+            r"(?:logic\s+)?"  # 可选的 logic 关键字
             r"(?:\[([\d\s\-]+):(\d+)\]\s*)?"  # 可选的 [msb:lsb] 宽度，msb 支持表达式如 "4-1"
             r"(\w+)\s*"  # 信号名
             r"[，,]"  # 中文或英文逗号
@@ -186,8 +206,11 @@ class DynamicSignalParser:
             # 解析 value
             value = self._parse_value(value_str) if value_str else 0
 
+            # 生成唯一的信号名（处理重复）
+            unique_name = self._get_unique_signal_name(name)
+
             signal = Signal(
-                name=name,
+                name=unique_name,
                 width=width,
                 signal_type=SignalType.LOGIC,
                 value=value,
@@ -276,8 +299,11 @@ class DynamicSignalParser:
             # 判断是否有显式位宽声明（CSV中，如果有位宽列则视为显式）
             explicit_width = (bitwidth_str != '')
 
+            # 生成唯一的信号名（处理重复）
+            unique_name = self._get_unique_signal_name(name)
+
             signal = Signal(
-                name=name,
+                name=unique_name,
                 width=width,
                 signal_type='reg',
                 value=value,
@@ -312,8 +338,11 @@ class DynamicSignalParser:
             # HDL 格式中，如果显式写了 [0:0] 则视为显式 1-bit
             explicit_width = (width == 1)
 
+            # 生成唯一的信号名（处理重复）
+            unique_name = self._get_unique_signal_name(name)
+
             signal = Signal(
-                name=name,
+                name=unique_name,
                 width=width,
                 signal_type=self._detect_type(text),
                 value=value,
