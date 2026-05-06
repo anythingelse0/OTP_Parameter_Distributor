@@ -226,7 +226,7 @@ input[15:0] config    ，  //efuse_default_value: 0"""
         signals, output = self._capture_output(text)
 
         self.assertEqual(len(signals), 2)
-        self.assertIn("Missing comma delimiter", output)
+        self.assertIn("Missing comma/semicolon delimiter", output)
 
     def test_input_all_valid(self):
         """测试 Input 格式全部正常，无警告"""

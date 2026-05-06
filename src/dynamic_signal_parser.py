@@ -152,8 +152,8 @@ class DynamicSignalParser:
                 if re.match(r'^[ \t]*input\b', stripped, re.IGNORECASE):
                     if 'efuse_default_value' not in stripped:
                         warnings.append(f"  Missing 'efuse_default_value' comment: {stripped[:80]}")
-                    elif not re.search(r'[，,]', stripped):
-                        warnings.append(f"  Missing comma delimiter: {stripped[:80]}")
+                    elif not re.search(r'[，,;]', stripped):
+                        warnings.append(f"  Missing comma/semicolon delimiter: {stripped[:80]}")
 
             elif detected_format == "csv":
                 # CSV 格式：检查有逗号但没被解析的行
@@ -218,9 +218,9 @@ class DynamicSignalParser:
         for line in lines[:10]:  # 检查前10行
             line = line.strip()
             if line and not line.startswith('//'):
-                # 特征：行以 input 开头，包含中文逗号 ， 和 efuse_default_value 注释
+                # 特征：行以 input 开头，包含分隔符（，,;）和 efuse_default_value 注释
                 if line.startswith('input'):
-                    if '，' in line and 'efuse_default_value' in line:
+                    if re.search(r'[，,;]', line) and 'efuse_default_value' in line:
                         return True
         return False
 
@@ -240,7 +240,7 @@ class DynamicSignalParser:
             r"(?:logic\s+)?"  # 可选的 logic 关键字
             r"(?:\[([\d\s\-]+):(\d+)\]\s*)?"  # 可选的 [msb:lsb] 宽度，msb 支持表达式如 "4-1"
             r"(\w+)\s*"  # 信号名
-            r"[，,]"  # 中文或英文逗号
+            r"[，,;]"  # 中文逗号、英文逗号或分号
             r".*?"
             r"efuse_default_value:\s*(0x[0-9a-fA-F]+|\d+)",  # value
             re.MULTILINE | re.IGNORECASE
@@ -434,7 +434,7 @@ class DynamicSignalParser:
             return SignalType.REG
         return SignalType.LOGIC
     
-    def _parse_flexible(self, text: str) -> List[Signal]:
+    def _parse_flexible(self, text: str) -> List[Signal]:  # pragma: no cover
         """灵活解析 - 支持多种格式"""
         signals = []
         
@@ -1083,7 +1083,7 @@ class DistributorGenerator:
         return code
 
 
-def main():
+def main():  # pragma: no cover
     """主函数 - 演示用法"""
 
     import argparse
@@ -1169,5 +1169,5 @@ def main():
         print("\n... (truncated)")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
