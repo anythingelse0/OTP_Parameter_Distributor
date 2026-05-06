@@ -1101,6 +1101,8 @@ def main():  # pragma: no cover
                        default='auto', help='Segmentation strategy')
     parser.add_argument('--struct', action='store_true', default=True,
                        help='Include struct definition')
+    parser.add_argument('-q', '--quiet', action='store_true', default=False,
+                       help='Suppress verbose console output (Segment Map, Byte Table)')
 
     args = parser.parse_args()
     
@@ -1136,8 +1138,9 @@ def main():  # pragma: no cover
 
     # 分析分段
     segments = dsp.analyze_segments(strategy=args.strategy)
-    dsp.print_analysis(segments)
-    dsp.print_byte_table(segments)
+    if not args.quiet:
+        dsp.print_analysis(segments)
+        dsp.print_byte_table(segments)
     
     # 生成 Excel Byte/Bit 表格（使用日期时间避免文件占用）
     output_sv_path = os.path.join(args.output_dir, args.output)

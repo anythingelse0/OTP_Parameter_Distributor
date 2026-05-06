@@ -27,7 +27,7 @@ logic [2:0]  config
 
 ### 说明
 - `signal_name`: 信号名称（必填）
-- `[msb:lsb]`: 位宽定义（可选，默认 1-bit）
+- `[msb:lsb]`: 位宽定义（可选，默认 1-bit）。缺少位宽定义的行会产生警告
 - `value`: 默认值/反转值（可选，默认 0）
   - `0`: 直接输出，不取反
   - `非0`: 根据位宽决定取反方式
@@ -63,6 +63,7 @@ bitwidth,efuse_signals,default_value
 ### 注意事项
 - 第一行可以是表头（会被自动跳过）
 - 以 `;` 开头的行被视为注释
+- 行内字段数不足时会产生未解析行警告
 
 ---
 
@@ -72,6 +73,7 @@ bitwidth,efuse_signals,default_value
 ```systemverilog
 input [msb:lsb] signal_name ， //efuse_default_value: value
 input signal_name ， //efuse_default_value: value
+input signal_name; //efuse_default_value: value
 ```
 
 ### 示例
@@ -79,19 +81,28 @@ input signal_name ， //efuse_default_value: value
 input               efuse_val_csr_single_bit           ，  //efuse_default_value: 0x1
 input [3:0]         efuse_val_csr_4bit                 ，  //efuse_default_value: 0x5
 input [7:0]         efuse_val_csr_8bit                 ，  //efuse_default_value: 0x12
+input [13:0]        reserved                           ，  //efuse_default_value: 0x0
+input efuse_val_csr_1000_p0_en_vga_op_outbias_ch0;     //efuse_default_value: 0x0
 ```
 
 ### 说明
 - 以 `input` 关键字开头
 - `[msb:lsb]` 位宽定义（可选，默认 1-bit）
 - `signal_name`: 信号名称（必填）
-- `，`: 中文逗号分隔符（格式特征）
+- 分隔符: 中文逗号 `，`、英文逗号 `,` 或分号 `;`（三选一）
 - `//efuse_default_value:`: 注释标记默认值（必填）
 - `value`: 默认值（支持 `0x` 十六进制或十进制）
 
-### 注意事项
-- 使用中文逗号 `，` 作为分隔符
-- 注释格式必须包含 `efuse_default_value:` 关键字
+### Reserved 信号
+信号名称为 `reserved`（不区分大小写）时自动识别为保留信号：
+- SV 输出中跳过该信号（不生成端口和赋值）
+- Excel 中用灰色（#D3D3D3）标注
+- 位宽仍计入总参数宽度
+
+### 未解析行警告
+以下情况会产生警告：
+- 缺少 `efuse_default_value` 注释
+- 缺少逗号/分号分隔符
 
 ---
 
@@ -137,6 +148,9 @@ python dynamic_signal_parser.py -i input_file.txt -o output_file.sv
 ### 参数说明
 - `-i, --input`: 输入信号列表文件
 - `-o, --output`: 输出 SV 文件（默认 `param_distributor.sv`）
+- `-d, --output-dir`: 输出目录（默认 `generated`）
+- `-s, --strategy`: 分段策略（`auto`、`equal`、`functional`，默认 `auto`）
+- `--struct`: 是否生成 struct 定义（默认 `true`）
 
 ---
 
@@ -145,7 +159,7 @@ python dynamic_signal_parser.py -i input_file.txt -o output_file.sv
 脚本按以下顺序自动检测输入格式：
 
 1. **CSV 格式**: 检查逗号分隔和 3 列结构
-2. **Input 格式**: 检查 `input` 关键字和中文逗号 `，`
+2. **Input 格式**: 检查 `input` 关键字和分隔符（`，`、`,`、`;`）及 `efuse_default_value` 注释
 3. **HDL 格式**: 作为默认格式解析
 
 ---

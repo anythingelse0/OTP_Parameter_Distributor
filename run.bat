@@ -33,7 +33,7 @@ echo [INFO] Input:  %INPUT_FILE%
 echo [INFO] Output: generated\%OUTPUT_NAME%
 echo.
 
-python src\dynamic_signal_parser.py -i %INPUT_FILE% -o %OUTPUT_NAME%
+python src\dynamic_signal_parser.py -i %INPUT_FILE% -o %OUTPUT_NAME% -q
 
 if %errorlevel% equ 0 (
     echo.
