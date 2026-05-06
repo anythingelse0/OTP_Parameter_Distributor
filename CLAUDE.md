@@ -54,6 +54,8 @@ Input file → parse_signals() [auto-detects format] → List[Signal]
 
 **Duplicate signal names** get `_1`, `_2` etc. suffixes automatically.
 
+**Reserved signals** (name = `reserved`, case-insensitive) are auto-detected: skipped in SV output, marked gray in Excel.
+
 ## CLI Arguments
 
 ```
