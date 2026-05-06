@@ -34,6 +34,7 @@ class Signal:
     description: str = ""
     explicit_width: bool = False  # 是否显式声明位宽（如 [1-1:0] 或 [0:0]）
     is_reserved: bool = False  # 是否为保留信号（reserved）
+    module: str = ""  # 所属模块（// module:xxx 标记）
 
     @property
     def bit_range(self) -> str:
@@ -69,11 +70,28 @@ class DynamicSignalParser:
         self.signals: List[Signal] = []
         self.total_width: int = 0
         self._signal_name_counter: Dict[str, int] = {}  # 跟踪信号名出现次数，用于重复检测
+        self._line_module_map: Dict[int, str] = {}  # 行号 → 模块名映射
 
     @staticmethod
     def _is_reserved(name: str) -> bool:
         """检查信号名是否为保留信号（reserved）"""
         return name.lower() == "reserved"
+
+    def _parse_module_markers(self, text: str) -> None:
+        """解析 // module:xxx 标记，建立行号→模块名映射"""
+        self._line_module_map = {}
+        current_module = ""
+        for line_num, line in enumerate(text.split('\n'), start=1):
+            m = re.match(r'^\s*//\s*module:\s*(\S+)', line)
+            if m:
+                current_module = m.group(1)
+            if current_module:
+                self._line_module_map[line_num] = current_module
+
+    def _get_module_for_pos(self, text: str, pos: int) -> str:
+        """根据字符位置查找所属模块名"""
+        line_num = text[:pos].count('\n') + 1
+        return self._line_module_map.get(line_num, "")
 
     def _get_unique_signal_name(self, name: str) -> str:
         """
@@ -196,6 +214,9 @@ class DynamicSignalParser:
         self.total_width = 0
         self._signal_name_counter = {}  # 重置重复名称计数器
 
+        # 解析模块标记（格式无关）
+        self._parse_module_markers(signal_text)
+
         # 检测格式并解析
         if self._is_csv_format(signal_text):
             self._parse_csv(signal_text)
@@ -275,7 +296,8 @@ class DynamicSignalParser:
                 signal_type=SignalType.LOGIC,
                 value=value,
                 explicit_width=explicit_width,
-                is_reserved=self._is_reserved(name)
+                is_reserved=self._is_reserved(name),
+                module=self._get_module_for_pos(text, match.start())
             )
             self.signals.append(signal)
             self.total_width += width
@@ -325,8 +347,8 @@ class DynamicSignalParser:
     def _parse_csv(self, text: str) -> None:
         """解析CSV格式信号列表"""
         lines = text.strip().split('\n')
-        
-        for line in lines:
+
+        for line_num, line in enumerate(lines, start=1):
             line = line.strip()
             if not line or line.startswith(';') or line.lower().startswith('bitwith'):
                 continue  # 跳过空行、注释和表头
@@ -369,7 +391,8 @@ class DynamicSignalParser:
                 signal_type='reg',
                 value=value,
                 explicit_width=explicit_width,
-                is_reserved=self._is_reserved(name)
+                is_reserved=self._is_reserved(name),
+                module=self._line_module_map.get(line_num, "")
             )
             self.signals.append(signal)
             self.total_width += width
@@ -409,7 +432,8 @@ class DynamicSignalParser:
                 signal_type=self._detect_type(text),
                 value=value,
                 explicit_width=explicit_width,
-                is_reserved=self._is_reserved(name)
+                is_reserved=self._is_reserved(name),
+                module=self._get_module_for_pos(text, match.start())
             )
             self.signals.append(signal)
             self.total_width += width
@@ -470,7 +494,8 @@ class DynamicSignalParser:
                     'index': i,
                     'signal': signal,
                     'value': signal.value,
-                    'is_reserved': signal.is_reserved
+                    'is_reserved': signal.is_reserved,
+                    'module': signal.module
                 }
                 current_bit += signal.width
 
@@ -487,7 +512,8 @@ class DynamicSignalParser:
                     'index': i,
                     'signal': signal,
                     'value': signal.value,
-                    'is_reserved': signal.is_reserved
+                    'is_reserved': signal.is_reserved,
+                    'module': signal.module
                 }
         
         return segments
@@ -762,6 +788,37 @@ class DynamicSignalParser:
     def print_byte_table(self, segments: Dict) -> None:
         """打印 Byte/Bit 映射表格"""
         print(self.generate_byte_table(segments))
+
+    def print_module_stats(self, segments: Dict) -> None:
+        """打印每个模块的 bit 统计"""
+        # 按模块分组统计
+        module_stats: Dict[str, Dict] = {}
+        for name, seg in sorted(segments.items(), key=lambda x: x[1]['start_bit']):
+            mod = seg.get('module', '') or '(unnamed)'
+            if mod not in module_stats:
+                module_stats[mod] = {'count': 0, 'bits': 0, 'start_bit': seg['start_bit'], 'end_bit': seg['end_bit']}
+            module_stats[mod]['count'] += 1
+            module_stats[mod]['bits'] += seg['width']
+            module_stats[mod]['end_bit'] = seg['end_bit']
+
+        if not module_stats:
+            return
+
+        print("\n" + "=" * 60)
+        print("MODULE BIT STATISTICS")
+        print("=" * 60)
+        print(f"{'Module'.ljust(25)} {'Signals'.rjust(7)} {'Bits'.rjust(7)}  {'Range'.rjust(15)}")
+        print("-" * 60)
+
+        total_bits = 0
+        for mod, stats in module_stats.items():
+            bit_range = f"[{stats['end_bit']}:{stats['start_bit']}]"
+            print(f"{mod.ljust(25)} {str(stats['count']).rjust(7)} {str(stats['bits']).rjust(7)}  {bit_range.rjust(15)}")
+            total_bits += stats['bits']
+
+        print("-" * 60)
+        print(f"{'Total'.ljust(25)} {str(len(segments)).rjust(7)} {str(total_bits).rjust(7)}")
+        print("=" * 60 + "\n")
 
     def generate_byte_table_excel(self, segments: Dict, output_file: str) -> None:
         """
@@ -1135,6 +1192,7 @@ def main():  # pragma: no cover
     if not args.quiet:
         dsp.print_analysis(segments)
         dsp.print_byte_table(segments)
+        dsp.print_module_stats(segments)
     
     # 生成 Excel Byte/Bit 表格（使用日期时间避免文件占用）
     output_sv_path = os.path.join(args.output_dir, args.output)
