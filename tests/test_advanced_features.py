@@ -168,7 +168,6 @@ class TestDistributorGenerator(unittest.TestCase):
 
         self.assertIn("typedef struct packed", sv_code)
         self.assertIn("module test_mod", sv_code)
-        self.assertIn("Auto-generated", sv_code)
 
     def test_generate_with_options_no_struct(self):
         """测试不带 struct 选项的生成"""

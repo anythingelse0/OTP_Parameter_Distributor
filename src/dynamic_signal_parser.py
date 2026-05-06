@@ -532,11 +532,7 @@ class DynamicSignalParser:
                           input_signal: str = "chip_param") -> str:
         """生成组合逻辑分发器 module"""
 
-        code = "// ============================================\n"
-        code += f"// {module_name}\n"
-        code += "// Auto-generated from signal list\n"
-        code += "// Combinational logic distributor\n"
-        code += "// ============================================\n\n"
+        code = ""
 
         # 计算总位宽（包含 reserved 信号的位宽）
         max_end = max(seg['end_bit'] for seg in segments.values())
@@ -598,8 +594,7 @@ class DynamicSignalParser:
                                    struct_name: str = "param_struct_t") -> str:
         """生成 packed struct 定义"""
 
-        code = f"// Packed struct for parameter organization\n"
-        code += f"typedef struct packed {{\n"
+        code = f"typedef struct packed {{\n"
 
         sorted_segs = sorted(segments.items(),
                             key=lambda x: x[1]['start_bit'])
@@ -1070,10 +1065,7 @@ class DistributorGenerator:
         code = ""
 
         if include_comments:
-            code += "// ============================================\n"
-            code += "// Auto-generated Parameter Distributor\n"
-            code += "// From dynamic signal list parsing\n"
-            code += "// ============================================\n\n"
+            pass
 
         if include_struct:
             code += self.parser.generate_struct_definition(segments) + "\n\n"
