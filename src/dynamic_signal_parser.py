@@ -1093,6 +1093,8 @@ def main():  # pragma: no cover
                        default='auto', help='Segmentation strategy')
     parser.add_argument('--struct', action='store_true', default=True,
                        help='Include struct definition')
+    parser.add_argument('--no-struct', action='store_false', dest='struct',
+                       help='Exclude struct definition')
     parser.add_argument('-q', '--quiet', action='store_true', default=False,
                        help='Suppress verbose console output (Segment Map, Byte Table)')
 
