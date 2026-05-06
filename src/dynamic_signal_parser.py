@@ -134,7 +134,55 @@ class DynamicSignalParser:
                 else:
                     print(f"  ⚠️  {YELLOW}{warning}{RESET}")
             print(f"{YELLOW}{'='*80}{RESET}\n")
-    
+
+    def _check_unparsed_lines(self, text: str, detected_format: str) -> None:
+        """检查可能被跳过的行并发出警告"""
+        lines = text.strip().split('\n')
+        parsed_names = {s.name.rstrip('0123456789_') if s.name[-1:].isdigit() else s.name
+                        for s in self.signals}
+        warnings = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('//') or stripped.startswith('#'):
+                continue
+
+            if detected_format == "input":
+                # Input Port 格式：检查看起来像 input 声明但没被解析的行
+                if re.match(r'^[ \t]*input\b', stripped, re.IGNORECASE):
+                    if 'efuse_default_value' not in stripped:
+                        warnings.append(f"  Missing 'efuse_default_value' comment: {stripped[:80]}")
+                    elif not re.search(r'[，,]', stripped):
+                        warnings.append(f"  Missing comma delimiter: {stripped[:80]}")
+
+            elif detected_format == "csv":
+                # CSV 格式：检查有逗号但没被解析的行
+                parts = stripped.split(',')
+                if len(parts) >= 3 and not stripped.lower().startswith('bitwith'):
+                    first_col = parts[0].strip()
+                    third_col = parts[2].strip()
+                    if not ((first_col == '' or re.match(r'^\[\d+:\d+\]$', first_col)) and
+                            (third_col.startswith('0x') or third_col.isdigit())):
+                        warnings.append(f"  Invalid CSV row: {stripped[:80]}")
+
+            elif detected_format == "hdl":
+                # HDL 格式：检查有 logic/input 关键字但没被解析的行
+                if re.match(r'^[ \t]*(logic|input|output)\b', stripped, re.IGNORECASE):
+                    if not re.search(r'\[\d+:\d+\]', stripped):
+                        warnings.append(f"  Missing bit range [msb:lsb]: {stripped[:80]}")
+
+        if warnings:
+            RED = '\033[91m'
+            YELLOW = '\033[93m'
+            BOLD = '\033[1m'
+            RESET = '\033[0m'
+
+            print(f"\n{BOLD}{RED}  [WARN] UNPARSED LINE WARNINGS ({len(warnings)}){RESET}")
+            print(f"{YELLOW}{'='*80}{RESET}")
+            for w in warnings:
+                print(f"{YELLOW}{w}{RESET}")
+            print(f"{YELLOW}{'='*80}{RESET}\n")
+
     def parse_signals(self, signal_text: str) -> List[Signal]:
         """
         解析信号列文本，支持多种格式：
@@ -151,10 +199,13 @@ class DynamicSignalParser:
         # 检测格式并解析
         if self._is_csv_format(signal_text):
             self._parse_csv(signal_text)
+            self._check_unparsed_lines(signal_text, "csv")
         elif self._is_input_format(signal_text):
             self._parse_input(signal_text)
+            self._check_unparsed_lines(signal_text, "input")
         else:
             self._parse_hdl(signal_text)
+            self._check_unparsed_lines(signal_text, "hdl")
 
         # 验证信号值的合法性
         self._validate_signal_values()

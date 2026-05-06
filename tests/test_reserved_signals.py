@@ -6,6 +6,7 @@ Reserved 信号处理测试
 
 import sys
 import os
+import io
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import unittest
@@ -187,6 +188,65 @@ input[15:0] config                                       ，  //efuse_default_va
         # 清理
         if os.path.exists(output_file):
             os.remove(output_file)
+
+
+class TestUnparsedLineWarnings(unittest.TestCase):
+    """测试未解析行的警告"""
+
+    def setUp(self):
+        self.parser = DynamicSignalParser()
+        self.held_output = io.StringIO()
+        self.original_stdout = sys.stdout
+
+    def tearDown(self):
+        sys.stdout = self.original_stdout
+
+    def _capture_output(self, text):
+        """解析并捕获输出"""
+        sys.stdout = self.held_output
+        signals = self.parser.parse_signals(text)
+        sys.stdout = self.original_stdout
+        return signals, self.held_output.getvalue()
+
+    def test_input_missing_efuse_value(self):
+        """测试 Input 格式缺少 efuse_default_value 注释"""
+        text = """input[7:0] data       ，  //efuse_default_value: 0x1
+input [8:0] reserved
+input[15:0] config    ，  //efuse_default_value: 0"""
+        signals, output = self._capture_output(text)
+
+        self.assertEqual(len(signals), 2)
+        self.assertIn("Missing 'efuse_default_value'", output)
+
+    def test_input_missing_comma(self):
+        """测试 Input 格式缺少逗号分隔符"""
+        text = """input[7:0] data       ，  //efuse_default_value: 0x1
+input [8:0] reserved  //efuse_default_value: 0
+input[15:0] config    ，  //efuse_default_value: 0"""
+        signals, output = self._capture_output(text)
+
+        self.assertEqual(len(signals), 2)
+        self.assertIn("Missing comma delimiter", output)
+
+    def test_input_all_valid(self):
+        """测试 Input 格式全部正常，无警告"""
+        text = """input[7:0] data       ，  //efuse_default_value: 0x1
+input [8:0] reserved  ，  //efuse_default_value: 0
+input[15:0] config    ，  //efuse_default_value: 0"""
+        signals, output = self._capture_output(text)
+
+        self.assertEqual(len(signals), 3)
+        self.assertNotIn("UNPARSED", output)
+
+    def test_hdl_missing_bit_range(self):
+        """测试 HDL 格式缺少位宽"""
+        text = """logic [7:0] data 0x1
+logic invalid_no_range 0x2
+logic [3:0] config 0x3"""
+        signals, output = self._capture_output(text)
+
+        self.assertEqual(len(signals), 2)
+        self.assertIn("Missing bit range", output)
 
 
 if __name__ == '__main__':
