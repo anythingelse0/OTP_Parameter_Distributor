@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 from enum import Enum
 
+# 保留信号颜色常量
+RESERVED_COLOR = "D3D3D3"  # 浅灰色
+
 
 class SignalType(Enum):
     """信号类型"""
@@ -30,6 +33,7 @@ class Signal:
     value: Optional[int] = 0
     description: str = ""
     explicit_width: bool = False  # 是否显式声明位宽（如 [1-1:0] 或 [0:0]）
+    is_reserved: bool = False  # 是否为保留信号（reserved）
 
     @property
     def bit_range(self) -> str:
@@ -65,6 +69,11 @@ class DynamicSignalParser:
         self.signals: List[Signal] = []
         self.total_width: int = 0
         self._signal_name_counter: Dict[str, int] = {}  # 跟踪信号名出现次数，用于重复检测
+
+    @staticmethod
+    def _is_reserved(name: str) -> bool:
+        """检查信号名是否为保留信号（reserved）"""
+        return name.lower() == "reserved"
 
     def _get_unique_signal_name(self, name: str) -> str:
         """
@@ -214,7 +223,8 @@ class DynamicSignalParser:
                 width=width,
                 signal_type=SignalType.LOGIC,
                 value=value,
-                explicit_width=explicit_width
+                explicit_width=explicit_width,
+                is_reserved=self._is_reserved(name)
             )
             self.signals.append(signal)
             self.total_width += width
@@ -307,7 +317,8 @@ class DynamicSignalParser:
                 width=width,
                 signal_type='reg',
                 value=value,
-                explicit_width=explicit_width
+                explicit_width=explicit_width,
+                is_reserved=self._is_reserved(name)
             )
             self.signals.append(signal)
             self.total_width += width
@@ -346,7 +357,8 @@ class DynamicSignalParser:
                 width=width,
                 signal_type=self._detect_type(text),
                 value=value,
-                explicit_width=explicit_width
+                explicit_width=explicit_width,
+                is_reserved=self._is_reserved(name)
             )
             self.signals.append(signal)
             self.total_width += width
@@ -406,10 +418,11 @@ class DynamicSignalParser:
                     'end_bit': current_bit + signal.width - 1,
                     'index': i,
                     'signal': signal,
-                    'value': signal.value
+                    'value': signal.value,
+                    'is_reserved': signal.is_reserved
                 }
                 current_bit += signal.width
-        
+
         elif strategy == "equal":
             # 均分到相等大小
             num_segments = len(self.signals)
@@ -422,7 +435,8 @@ class DynamicSignalParser:
                     'end_bit': i * segment_size + segment_size - 1,
                     'index': i,
                     'signal': signal,
-                    'value': signal.value
+                    'value': signal.value,
+                    'is_reserved': signal.is_reserved
                 }
         
         return segments
@@ -466,29 +480,32 @@ class DynamicSignalParser:
                           module_name: str = "param_distributor",
                           input_signal: str = "chip_param") -> str:
         """生成组合逻辑分发器 module"""
-        
+
         code = "// ============================================\n"
         code += f"// {module_name}\n"
         code += "// Auto-generated from signal list\n"
         code += "// Combinational logic distributor\n"
         code += "// ============================================\n\n"
-        
-        # 计算总位宽
+
+        # 计算总位宽（包含 reserved 信号的位宽）
         max_end = max(seg['end_bit'] for seg in segments.values())
         total_width = max_end + 1
-        
+
         code += f"module {module_name} (\n"
         code += f"    input  logic [{total_width-1}:0]  {input_signal},\n"
         code += "\n    // Output segments\n"
-        
-        # 生成输出端口
-        sorted_segs = sorted(segments.items(), 
+
+        # 生成输出端口（跳过 reserved 信号）
+        sorted_segs = sorted(segments.items(),
                             key=lambda x: x[1]['start_bit'])
-        
-        for i, (name, seg) in enumerate(sorted_segs):
+
+        # 过滤掉 reserved 信号
+        non_reserved = [(name, seg) for name, seg in sorted_segs if not seg.get('is_reserved', False)]
+
+        for i, (name, seg) in enumerate(non_reserved):
             width = seg['width']
             signal_obj = seg.get('signal')
-            
+
             # 根据是否显式声明位宽决定格式
             if width == 1 and signal_obj and not signal_obj.explicit_width:
                 # 隐式 1-bit: 不显示 [0:0]
@@ -498,15 +515,15 @@ class DynamicSignalParser:
                 bit_range = f"[{width-1}:0]"
                 code += f"    output logic {bit_range}      {name}"
 
-            code += "\n" if i == len(sorted_segs) - 1 else ",\n"
-        
+            code += "\n" if i == len(non_reserved) - 1 else ",\n"
+
         code += ");\n\n"
-        
-        # 生成组合逻辑
+
+        # 生成组合逻辑（跳过 reserved 信号）
         code += "    // Combinational logic distribution\n"
         code += "    always_comb begin\n"
 
-        for name, seg in sorted_segs:
+        for name, seg in non_reserved:
             start = seg['start_bit']
             width = seg['width']
             value = seg.get('value', 0)
@@ -523,28 +540,30 @@ class DynamicSignalParser:
 
         code += "    end\n\n"
         code += "endmodule\n"
-        
+
         return code
     
     def generate_struct_definition(self, segments: Dict,
                                    struct_name: str = "param_struct_t") -> str:
         """生成 packed struct 定义"""
-        
+
         code = f"// Packed struct for parameter organization\n"
         code += f"typedef struct packed {{\n"
-        
+
         sorted_segs = sorted(segments.items(),
                             key=lambda x: x[1]['start_bit'])
-        
+
         for name, seg in sorted_segs:
+            if seg.get('is_reserved', False):
+                continue  # 跳过 reserved 信号
             width = seg['width']
             if width == 1:
                 code += f"    logic              {name};\n"
             else:
                 code += f"    logic [{width-1}:0]  {name};\n"
-        
+
         code += f"}} {struct_name};\n"
-        
+
         return code
     
     def generate_assignment_logic(self, segments: Dict,
@@ -558,6 +577,8 @@ class DynamicSignalParser:
                             key=lambda x: x[1]['start_bit'])
 
         for name, seg in sorted_segs:
+            if seg.get('is_reserved', False):
+                continue  # 跳过 reserved 信号
             start = seg['start_bit']
             width = seg['width']
             value = seg.get('value', 0)
@@ -590,9 +611,12 @@ class DynamicSignalParser:
             end = seg['end_bit']
             width = seg['width']
             value = seg.get('value', 0)
+            is_reserved = seg.get('is_reserved', False)
 
             # 确定取反类型
-            if value == 0:
+            if is_reserved:
+                invert_type = "reserved"
+            elif value == 0:
                 invert_type = "none"
             elif width == 1:
                 invert_type = "full (~)"
@@ -606,7 +630,8 @@ class DynamicSignalParser:
             else:
                 bit_range = f"[{end}:{start}]"
 
-            print(f"{name.ljust(25)} {bit_range.rjust(15)}  {width:4d}  {value_hex.rjust(8)}  {invert_type.rjust(12)}")
+            display_name = f"{name} (R)" if is_reserved else name
+            print(f"{display_name.ljust(25)} {bit_range.rjust(15)}  {width:4d}  {value_hex.rjust(8)}  {invert_type.rjust(12)}")
 
         print("-" * 95)
         print("="*80 + "\n")
@@ -839,8 +864,11 @@ class DynamicSignalParser:
                         else:
                             text = f"{found_signal}[{sig_bit_end}:{sig_bit_start}]"
 
-                    # 获取或创建颜色 fill 对象
-                    signal_color = signal_color_map.get(found_signal)
+                    # 获取或创建颜色 fill 对象（reserved 信号使用灰色）
+                    if found_seg.get('is_reserved', False):
+                        signal_color = RESERVED_COLOR
+                    else:
+                        signal_color = signal_color_map.get(found_signal)
                     if signal_color:
                         if signal_color not in fill_cache:
                             fill_cache[signal_color] = PatternFill(start_color=signal_color, end_color=signal_color, fill_type='solid')
@@ -918,8 +946,11 @@ class DynamicSignalParser:
                     else:
                         value_text = f"0x{value:X}"
 
-                    # 获取颜色
-                    signal_color = signal_color_map.get(found_signal)
+                    # 获取颜色（reserved 信号使用灰色）
+                    if found_seg.get('is_reserved', False):
+                        signal_color = RESERVED_COLOR
+                    else:
+                        signal_color = signal_color_map.get(found_signal)
                     if signal_color:
                         if signal_color not in fill_cache:
                             fill_cache[signal_color] = PatternFill(start_color=signal_color, end_color=signal_color, fill_type='solid')

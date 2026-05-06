@@ -72,6 +72,23 @@ input      flag                                          ，  //efuse_default_va
         self.assertEqual(len(segments_equal), 1)
 
         # functional 策略未实现，返回空字典
+
+    def test_analyze_equal_strategy_multiple_signals(self):
+        """测试 equal 策略对多信号均分位宽"""
+        text = """input[7:0] data                                          ，  //efuse_default_value: 0x1
+input[7:0] config                                        ，  //efuse_default_value: 0x2
+input[7:0] status                                        ，  //efuse_default_value: 0x3"""
+        self.parser.parse_signals(text)
+        segments = self.parser.analyze_segments(strategy="equal")
+
+        self.assertEqual(len(segments), 3)
+        # 总宽 24，3 个信号，每个 8 位
+        self.assertEqual(segments['data']['start_bit'], 0)
+        self.assertEqual(segments['data']['width'], 8)
+        self.assertEqual(segments['config']['start_bit'], 8)
+        self.assertEqual(segments['config']['width'], 8)
+        self.assertEqual(segments['status']['start_bit'], 16)
+        self.assertEqual(segments['status']['width'], 8)
         segments_func = self.parser.analyze_segments(strategy="functional")
         self.assertEqual(len(segments_func), 0)
 
@@ -338,6 +355,43 @@ class TestFileOperations(unittest.TestCase):
         with open(output_file, 'r') as f:
             content = f.read()
         self.assertIn("module test_module", content)
+
+
+class TestEvalSimpleExpr(unittest.TestCase):
+    """测试 _eval_simple_expr 表达式解析"""
+
+    def setUp(self):
+        self.parser = DynamicSignalParser()
+
+    def test_direct_integer(self):
+        """测试直接整数解析"""
+        self.assertEqual(self.parser._eval_simple_expr("8"), 8)
+        self.assertEqual(self.parser._eval_simple_expr("0"), 0)
+        self.assertEqual(self.parser._eval_simple_expr("256"), 256)
+
+    def test_integer_with_spaces(self):
+        """测试带空格的整数"""
+        self.assertEqual(self.parser._eval_simple_expr("  8  "), 8)
+
+    def test_subtraction_expression(self):
+        """测试减法表达式"""
+        self.assertEqual(self.parser._eval_simple_expr("4-1"), 3)
+        self.assertEqual(self.parser._eval_simple_expr("10-1"), 9)
+        self.assertEqual(self.parser._eval_simple_expr("8-1"), 7)
+
+    def test_subtraction_with_spaces(self):
+        """测试带空格的减法表达式"""
+        self.assertEqual(self.parser._eval_simple_expr("4 - 1"), 3)
+
+    def test_invalid_expression_raises(self):
+        """测试无效表达式抛出异常"""
+        with self.assertRaises(ValueError):
+            self.parser._eval_simple_expr("abc")
+
+    def test_invalid_parts_raises(self):
+        """测试无法解析的部分抛出异常"""
+        with self.assertRaises(ValueError):
+            self.parser._eval_simple_expr("a-b")
 
 
 if __name__ == "__main__":
