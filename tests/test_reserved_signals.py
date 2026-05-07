@@ -239,14 +239,17 @@ input[15:0] config    ，  //efuse_default_value: 0"""
         self.assertNotIn("UNPARSED", output)
 
     def test_hdl_missing_bit_range(self):
-        """测试 HDL 格式缺少位宽"""
+        """测试 HDL 格式缺少位宽 - 裸信号解析为隐式1-bit"""
         text = """logic [7:0] data 0x1
 logic invalid_no_range 0x2
 logic [3:0] config 0x3"""
         signals, output = self._capture_output(text)
 
-        self.assertEqual(len(signals), 2)
-        self.assertIn("Missing bit range", output)
+        self.assertEqual(len(signals), 3)
+        # 裸信号解析为隐式1-bit
+        self.assertEqual(signals[1].name, "invalid_no_range")
+        self.assertEqual(signals[1].width, 1)
+        self.assertFalse(signals[1].explicit_width)
 
 
 if __name__ == '__main__':

@@ -2,8 +2,8 @@
 REM otp generator batch script
 REM Usage: run.bat [input_file] [output_name]
 
-set INPUT_FILE=input\cygnetpluse_otp_map.txt
-set OUTPUT_NAME=cygnetpluse_otp_distributor.sv
+set INPUT_FILE=%~1
+set OUTPUT_NAME=%~2
 
 if "%INPUT_FILE%"=="" (
     echo ========================================

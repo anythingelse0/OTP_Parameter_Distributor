@@ -141,18 +141,18 @@ class DynamicSignalParser:
                 )
         
         if warnings:
-            print(f"\n{ANSI_BG_YELLOW}{ANSI_BOLD}{ANSI_RED}  ⚠️  VALUE VALIDATION WARNINGS  ⚠️  {ANSI_RESET}")
+            print(f"\n{ANSI_BG_YELLOW}{ANSI_BOLD}{ANSI_RED}  [WARN]  VALUE VALIDATION WARNINGS  [WARN]  {ANSI_RESET}")
             print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}")
             for warning in warnings:
                 if "Signal '" in warning:
                     parts = warning.split("'")
                     if len(parts) >= 2:
-                        colored_warning = f"  ⚠️  {ANSI_RED}{ANSI_BOLD}Signal '{parts[1]}'{ANSI_RESET}{ANSI_YELLOW}{warning[len(parts[0]) + len(parts[1]) + 2:]}{ANSI_RESET}"
+                        colored_warning = f"  [WARN]  {ANSI_RED}{ANSI_BOLD}Signal '{parts[1]}'{ANSI_RESET}{ANSI_YELLOW}{warning[len(parts[0]) + len(parts[1]) + 2:]}{ANSI_RESET}"
                         print(colored_warning)
-                    else:
-                        print(f"  ⚠️  {ANSI_YELLOW}{warning}{ANSI_RESET}")
-                else:
-                    print(f"  ⚠️  {ANSI_YELLOW}{warning}{ANSI_RESET}")
+                    else:  # pragma: no cover
+                        print(f"  [WARN]  {ANSI_YELLOW}{warning}{ANSI_RESET}")
+                else:  # pragma: no cover
+                    print(f"  [WARN]  {ANSI_YELLOW}{warning}{ANSI_RESET}")
             print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}\n")
 
     def _check_unparsed_lines(self, text: str, detected_format: str) -> None:
@@ -275,6 +275,9 @@ class DynamicSignalParser:
                 # 解析 msb（可能是表达式如 "4-1" 或简单数字）
                 msb_val = self._eval_simple_expr(msb_str.strip())
                 lsb_val = int(lsb_str)
+                if msb_val < lsb_val:
+                    print(f"[WARN] Skipping signal '{name}': inverted bit range [{msb_val}:{lsb_val}]")
+                    continue
                 width = msb_val - lsb_val + 1
                 explicit_width = True  # 显式声明了位宽（如 [4-1:0] 或 [0:0]）
             else:
@@ -373,6 +376,10 @@ class DynamicSignalParser:
                 if match:
                     high = int(match.group(1))
                     low = int(match.group(2))
+                    if high < low:
+                        print(f"[WARN] Skipping signal '{name}': inverted bit range [{high}:{low}]")
+                        offset += len(raw_line) + 1
+                        continue
                     width = high - low + 1
                 else:
                     offset += len(raw_line) + 1
@@ -403,28 +410,36 @@ class DynamicSignalParser:
     def _parse_hdl(self, text: str) -> None:
         """解析HDL格式信号列表"""
         # 关键模式：匹配行首的 "logic [high:low] signal_name [optional_value]"
-        # 避免匹配注释中的内容，要求行首是关键字或 [ 开头
+        # 也支持无位宽的裸信号如 "signal_name 0x0"（隐式1-bit）
         # value 可以是 0x123 或 123 格式
         pattern = re.compile(
             r"^[ \t]*(?:logic|input|output|wire|reg)?\s*"
-            r"\[(\d+):(\d+)\]\s+(\w+)"
+            r"(?:\[(\d+):(\d+)\]\s+)?"  # 可选的位宽，无则隐式1-bit
+            r"(\w+)"                      # 信号名
             r"(?:\s+(0x[0-9a-fA-F]+|\d+))?"  # 可选的 value
             r"[ \t]*(?:\r?\n|$)",  # 行尾
             re.IGNORECASE | re.MULTILINE
         )
 
         for match in pattern.finditer(text):
-            high = int(match.group(1))
-            low = int(match.group(2))
             name = match.group(3)
-            width = high - low + 1
+
+            if match.group(1) and match.group(2):
+                high = int(match.group(1))
+                low = int(match.group(2))
+                if high < low:
+                    print(f"[WARN] Skipping signal '{name}': inverted bit range [{high}:{low}]")
+                    continue
+                width = high - low + 1
+            else:
+                width = 1
 
             # 解析可选的 value
             value_str = match.group(4)
             value = self._parse_value(value_str) if value_str else 0
 
-            # HDL 格式中，如果显式写了 [0:0] 则视为显式 1-bit
-            explicit_width = (width == 1)
+            # HDL 格式中，如果显式写了 [0:0] 则视为显式 1-bit，裸信号为隐式
+            explicit_width = match.group(1) is not None and match.group(2) is not None and width == 1
 
             # 生成唯一的信号名（处理重复）
             unique_name = self._get_unique_signal_name(name)
@@ -821,7 +836,7 @@ class DynamicSignalParser:
             from openpyxl import Workbook
             from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
             from openpyxl.utils import get_column_letter
-        except ImportError:
+        except ImportError:  # pragma: no cover
             print("Warning: openpyxl not available, skipping Excel export")
             return
         
@@ -948,10 +963,10 @@ class DynamicSignalParser:
                     end_col = col_idx + cover_bits - 1
 
                     # 生成信号文本
-                    if seg_start == seg_end:
+                    if seg_start == seg_end:  # pragma: no cover
                         text = found_signal
                     else:
-                        if sig_bit_start == sig_bit_end:
+                        if sig_bit_start == sig_bit_end:  # pragma: no cover
                             text = f"{found_signal}[{sig_bit_end}]"
                         else:
                             text = f"{found_signal}[{sig_bit_end}:{sig_bit_start}]"
@@ -962,10 +977,10 @@ class DynamicSignalParser:
                     else:
                         signal_color = signal_color_map.get(found_signal)
                     if signal_color:
-                        if signal_color not in fill_cache:
+                        if signal_color not in fill_cache:  # pragma: no cover
                             fill_cache[signal_color] = PatternFill(start_color=signal_color, end_color=signal_color, fill_type='solid')
                         color_fill = fill_cache[signal_color]
-                    else:
+                    else:  # pragma: no cover
                         color_fill = None
 
                     # 写入第一个单元格并合并
@@ -1044,10 +1059,10 @@ class DynamicSignalParser:
                     else:
                         signal_color = signal_color_map.get(found_signal)
                     if signal_color:
-                        if signal_color not in fill_cache:
+                        if signal_color not in fill_cache:  # pragma: no cover
                             fill_cache[signal_color] = PatternFill(start_color=signal_color, end_color=signal_color, fill_type='solid')
                         color_fill = fill_cache[signal_color]
-                    else:
+                    else:  # pragma: no cover
                         color_fill = None
 
                     # 写入 value
@@ -1078,7 +1093,7 @@ class DynamicSignalParser:
         
         # 保存
         wb.save(output_file)
-        print(f"✓ Excel table generated: {output_file}")
+        print(f"[OK] Excel table generated: {output_file}")
 
 
 class DistributorGenerator:
@@ -1163,7 +1178,7 @@ def main():  # pragma: no cover
     signals = dsp.parse_signals(signal_text)
 
     if not signals:
-        print("❌ No signals parsed. Check input format.")
+        print("[ERROR] No signals parsed. Check input format.")
         print("\nExpected formats:")
         print("  - logic [31:0] param_a          (value = 0, no inversion)")
         print("  - logic [31:0] param_b 0x123    (value != 0, per-bit inversion)")
@@ -1204,7 +1219,7 @@ def main():  # pragma: no cover
         f.write(sv_code)
 
     if not args.quiet:
-        print(f"✓ Generated: {output_sv_path}\n")
+        print(f"[OK] Generated: {output_sv_path}\n")
 
     # 显示预览
     if args.verbose:
