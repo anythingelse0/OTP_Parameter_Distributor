@@ -7,6 +7,7 @@ Dynamic Signal Parser & Parameter Distributor
 import re
 import os
 import time
+import bisect
 from datetime import datetime
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
@@ -14,6 +15,14 @@ from enum import Enum
 
 # 保留信号颜色常量
 RESERVED_COLOR = "D3D3D3"  # 浅灰色
+
+# ANSI 终端颜色常量
+ANSI_RED = '\033[91m'
+ANSI_YELLOW = '\033[93m'
+ANSI_BOLD = '\033[1m'
+ANSI_BG_YELLOW = '\033[43m'
+ANSI_BG_RED = '\033[41m'
+ANSI_RESET = '\033[0m'
 
 
 class SignalType(Enum):
@@ -70,7 +79,8 @@ class DynamicSignalParser:
         self.signals: List[Signal] = []
         self.total_width: int = 0
         self._signal_name_counter: Dict[str, int] = {}  # 跟踪信号名出现次数，用于重复检测
-        self._line_module_map: Dict[int, str] = {}  # 行号 → 模块名映射
+        self._module_offsets: List[int] = [0]  # 模块标记的字符偏移
+        self._module_names: List[str] = [""]   # 对应的模块名
 
     @staticmethod
     def _is_reserved(name: str) -> bool:
@@ -78,20 +88,21 @@ class DynamicSignalParser:
         return name.lower() == "reserved"
 
     def _parse_module_markers(self, text: str) -> None:
-        """解析 // module:xxx 标记，建立行号→模块名映射"""
-        self._line_module_map = {}
-        current_module = ""
-        for line_num, line in enumerate(text.split('\n'), start=1):
+        """解析 // module:xxx 标记，建立行偏移→模块名映射（紧凑存储 + 二分查找）"""
+        self._module_offsets = [0]  # 每个标记的起始字符偏移
+        self._module_names = [""]   # 对应的模块名
+        offset = 0
+        for line in text.split('\n'):
             m = re.match(r'^\s*//\s*module:\s*(\S+)', line)
             if m:
-                current_module = m.group(1)
-            if current_module:
-                self._line_module_map[line_num] = current_module
+                self._module_offsets.append(offset)
+                self._module_names.append(m.group(1))
+            offset += len(line) + 1  # +1 for '\n'
 
     def _get_module_for_pos(self, text: str, pos: int) -> str:
-        """根据字符位置查找所属模块名"""
-        line_num = text[:pos].count('\n') + 1
-        return self._line_module_map.get(line_num, "")
+        """根据字符位置查找所属模块名（O(log M) 二分查找）"""
+        idx = bisect.bisect_right(self._module_offsets, pos) - 1
+        return self._module_names[idx]
 
     def _get_unique_signal_name(self, name: str) -> str:
         """
@@ -130,28 +141,19 @@ class DynamicSignalParser:
                 )
         
         if warnings:
-            # ANSI color codes for Windows terminal
-            RED = '\033[91m'
-            YELLOW = '\033[93m'
-            BOLD = '\033[1m'
-            BG_YELLOW = '\033[43m'
-            BG_RED = '\033[41m'
-            RESET = '\033[0m'
-            
-            print(f"\n{BG_YELLOW}{BOLD}{RED}  ⚠️  VALUE VALIDATION WARNINGS  ⚠️  {RESET}")
-            print(f"{YELLOW}{'='*80}{RESET}")
+            print(f"\n{ANSI_BG_YELLOW}{ANSI_BOLD}{ANSI_RED}  ⚠️  VALUE VALIDATION WARNINGS  ⚠️  {ANSI_RESET}")
+            print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}")
             for warning in warnings:
-                # Extract signal name for highlighting
                 if "Signal '" in warning:
                     parts = warning.split("'")
                     if len(parts) >= 2:
-                        colored_warning = f"  ⚠️  {RED}{BOLD}Signal '{parts[1]}'{RESET}{YELLOW}{warning[len(parts[0]) + len(parts[1]) + 2:]}{RESET}"
+                        colored_warning = f"  ⚠️  {ANSI_RED}{ANSI_BOLD}Signal '{parts[1]}'{ANSI_RESET}{ANSI_YELLOW}{warning[len(parts[0]) + len(parts[1]) + 2:]}{ANSI_RESET}"
                         print(colored_warning)
                     else:
-                        print(f"  ⚠️  {YELLOW}{warning}{RESET}")
+                        print(f"  ⚠️  {ANSI_YELLOW}{warning}{ANSI_RESET}")
                 else:
-                    print(f"  ⚠️  {YELLOW}{warning}{RESET}")
-            print(f"{YELLOW}{'='*80}{RESET}\n")
+                    print(f"  ⚠️  {ANSI_YELLOW}{warning}{ANSI_RESET}")
+            print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}\n")
 
     def _check_unparsed_lines(self, text: str, detected_format: str) -> None:
         """检查可能被跳过的行并发出警告"""
@@ -190,16 +192,11 @@ class DynamicSignalParser:
                         warnings.append(f"  Missing bit range [msb:lsb]: {stripped[:80]}")
 
         if warnings:
-            RED = '\033[91m'
-            YELLOW = '\033[93m'
-            BOLD = '\033[1m'
-            RESET = '\033[0m'
-
-            print(f"\n{BOLD}{RED}  [WARN] UNPARSED LINE WARNINGS ({len(warnings)}){RESET}")
-            print(f"{YELLOW}{'='*80}{RESET}")
+            print(f"\n{ANSI_BOLD}{ANSI_RED}  [WARN] UNPARSED LINE WARNINGS ({len(warnings)}){ANSI_RESET}")
+            print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}")
             for w in warnings:
-                print(f"{YELLOW}{w}{RESET}")
-            print(f"{YELLOW}{'='*80}{RESET}\n")
+                print(f"{ANSI_YELLOW}{w}{ANSI_RESET}")
+            print(f"{ANSI_YELLOW}{'='*80}{ANSI_RESET}\n")
 
     def parse_signals(self, signal_text: str) -> List[Signal]:
         """
@@ -263,7 +260,7 @@ class DynamicSignalParser:
             r"(\w+)\s*"  # 信号名
             r"[，,;]"  # 中文逗号、英文逗号或分号
             r".*?"
-            r"efuse_default_value:\s*(0x[0-9a-fA-F]+|\d+)",  # value
+            r"efuse_default_value\s*:\s*(0x[0-9a-fA-F]+|\d+)",  # value
             re.MULTILINE | re.IGNORECASE
         )
 
@@ -348,13 +345,17 @@ class DynamicSignalParser:
         """解析CSV格式信号列表"""
         lines = text.strip().split('\n')
 
-        for line_num, line in enumerate(lines, start=1):
+        offset = 0
+        for line in lines:
+            raw_line = line
             line = line.strip()
             if not line or line.startswith(';') or line.lower().startswith('bitwith'):
+                offset += len(raw_line) + 1
                 continue  # 跳过空行、注释和表头
             
             parts = line.split(',')
             if len(parts) < 3:
+                offset += len(raw_line) + 1
                 continue
             
             bitwidth_str = parts[0].strip()
@@ -374,6 +375,7 @@ class DynamicSignalParser:
                     low = int(match.group(2))
                     width = high - low + 1
                 else:
+                    offset += len(raw_line) + 1
                     continue  # 格式错误，跳过
             
             # 解析 value
@@ -388,14 +390,15 @@ class DynamicSignalParser:
             signal = Signal(
                 name=unique_name,
                 width=width,
-                signal_type='reg',
+                signal_type=SignalType.REG,
                 value=value,
                 explicit_width=explicit_width,
                 is_reserved=self._is_reserved(name),
-                module=self._line_module_map.get(line_num, "")
+                module=self._get_module_for_pos(text, offset)
             )
             self.signals.append(signal)
             self.total_width += width
+            offset += len(raw_line) + 1
 
     def _parse_hdl(self, text: str) -> None:
         """解析HDL格式信号列表"""
@@ -457,20 +460,6 @@ class DynamicSignalParser:
         elif 'reg' in line.lower():
             return SignalType.REG
         return SignalType.LOGIC
-    
-    def _parse_flexible(self, text: str) -> List[Signal]:  # pragma: no cover
-        """灵活解析 - 支持多种格式"""
-        signals = []
-        
-        # 格式: name width
-        pattern_simple = re.compile(r"(\w+)\s+(\d+)(?:\s*[,;]|$)")
-        
-        for match in pattern_simple.finditer(text):
-            name = match.group(1)
-            width = int(match.group(2))
-            signals.append(Signal(name=name, width=width))
-        
-        return signals
     
     def analyze_segments(self, strategy: str = "auto") -> Dict[str, Dict]:
         """
@@ -1115,14 +1104,10 @@ class DistributorGenerator:
     
     def generate_with_options(self, segments: Dict,
                              include_struct: bool = True,
-                             include_comments: bool = True,
                              module_name: str = "param_distributor") -> str:
         """按选项生成代码"""
 
         code = ""
-
-        if include_comments:
-            pass
 
         if include_struct:
             code += self.parser.generate_struct_definition(segments) + "\n\n"
@@ -1152,8 +1137,10 @@ def main():  # pragma: no cover
                        help='Include struct definition')
     parser.add_argument('--no-struct', action='store_false', dest='struct',
                        help='Exclude struct definition')
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+                       help='Print detailed analysis and byte table')
     parser.add_argument('-q', '--quiet', action='store_true', default=False,
-                       help='Suppress verbose console output (Segment Map, Byte Table)')
+                       help='Suppress all console output except generation result')
 
     args = parser.parse_args()
     
@@ -1189,9 +1176,11 @@ def main():  # pragma: no cover
 
     # 分析分段
     segments = dsp.analyze_segments(strategy=args.strategy)
-    if not args.quiet:
+    if args.verbose:
         dsp.print_analysis(segments)
         dsp.print_byte_table(segments)
+        dsp.print_module_stats(segments)
+    elif not args.quiet:
         dsp.print_module_stats(segments)
     
     # 生成 Excel Byte/Bit 表格（使用日期时间避免文件占用）
@@ -1214,14 +1203,16 @@ def main():  # pragma: no cover
     with open(output_sv_path, 'w') as f:
         f.write(sv_code)
 
-    print(f"✓ Generated: {output_sv_path}\n")
+    if not args.quiet:
+        print(f"✓ Generated: {output_sv_path}\n")
 
     # 显示预览
-    print("Preview:")
-    print("-" * 80)
-    print(sv_code[:1000])
-    if len(sv_code) > 1000:
-        print("\n... (truncated)")
+    if args.verbose:
+        print("Preview:")
+        print("-" * 80)
+        print(sv_code[:1000])
+        if len(sv_code) > 1000:
+            print("\n... (truncated)")
 
 
 if __name__ == "__main__":  # pragma: no cover
