@@ -162,7 +162,6 @@ class TestDistributorGenerator(unittest.TestCase):
         sv_code = gen.generate_with_options(
             segments,
             include_struct=True,
-            include_comments=True,
             module_name="test_mod"
         )
 
@@ -179,7 +178,6 @@ class TestDistributorGenerator(unittest.TestCase):
         sv_code = gen.generate_with_options(
             segments,
             include_struct=False,
-            include_comments=False,
             module_name="test_mod"
         )
 
