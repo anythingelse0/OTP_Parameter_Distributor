@@ -256,7 +256,7 @@ class DynamicSignalParser:
         pattern = re.compile(
             r"^[ \t]*input\s*"
             r"(?:logic\s+)?"  # 可选的 logic 关键字
-            r"(?:\[([\d\s\-]+):(\d+)\]\s*)?"  # 可选的 [msb:lsb] 宽度，msb 支持表达式如 "4-1"
+            r"(?:\[([\d\s\-\(\)]+):(\d+)\]\s*)?"  # 可选的 [msb:lsb] 宽度，msb 支持表达式如 "4-1" 或 "(13)-(7)"
             r"(\w+)\s*"  # 信号名
             r"[，,;]"  # 中文逗号、英文逗号或分号
             r".*?"
@@ -303,14 +303,16 @@ class DynamicSignalParser:
             self.total_width += width
 
     def _eval_simple_expr(self, expr: str) -> int:
-        """计算简单算术表达式（如 "4-1", "8-1" 等）"""
+        """计算简单算术表达式（如 "4-1", "8-1", "(13)-(7)" 等）"""
         expr = expr.strip()
+        # 去除所有括号以支持 "(13)-(7)" 和 "((11)-(10))" 等格式
+        expr = expr.replace('(', '').replace(')', '').strip()
         # 尝试直接解析为整数
         try:
             return int(expr)
         except ValueError:
             pass
-        
+
         # 处理简单的减法表达式如 "4-1", "10-1"
         if '-' in expr:
             parts = expr.split('-')
@@ -321,7 +323,7 @@ class DynamicSignalParser:
                     return left - right
                 except ValueError:
                     pass
-        
+
         # 如果无法解析，报错
         raise ValueError(f"Cannot parse bit width expression: {expr}")
 
