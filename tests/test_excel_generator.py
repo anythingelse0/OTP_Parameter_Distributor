@@ -217,6 +217,99 @@ class TestExcelContent(unittest.TestCase):
         
         self.assertTrue(found_default, "Should have 'Default' row")
 
+    def test_bit_column_alignment_header_vs_content(self):
+        """表头 bit 7 在左、bit 0 在右；Name 行内容必须与之对齐。
+
+        用一个占 bit 0-3 的信号验证：它必须出现在 Byte 0 行的低位区
+        （右侧高列号，col 6-9），而不是被错放到左侧 bit 7 区域。"""
+        try:
+            import openpyxl
+        except ImportError:
+            self.skipTest("openpyxl not available")
+
+        # short_a 占 Byte 0 的 bit 3:0（低位），右侧
+        segments = {
+            'short_a': {'start_bit': 0, 'end_bit': 3, 'width': 4, 'value': 0x5}
+        }
+        output_file = os.path.join(self.temp_dir.name, "align.xlsx")
+        self.parser.generate_byte_table_excel(segments, output_file)
+
+        wb = openpyxl.load_workbook(output_file)
+        ws = wb.active
+
+        # 找到 "Byte 0" 标题行
+        byte0_row = None
+        for r in range(1, ws.max_row + 1):
+            if ws.cell(row=r, column=1).value == "Byte 0":
+                byte0_row = r
+                break
+        self.assertIsNotNone(byte0_row, "Should have a Byte 0 row")
+
+        # 表头：第 2 列=bit7 ... 第 9 列=bit0
+        header_bits = [ws.cell(row=byte0_row, column=c).value for c in range(2, 10)]
+        self.assertEqual(header_bits, [7, 6, 5, 4, 3, 2, 1, 0],
+                         "Header must read bit 7..0 left to right")
+
+        name_row = byte0_row + 1
+        # short_a 占 bit 3:0 → 应落在 col 6-9（bit 3..0），合并后文字在 col 6
+        name_cells = [ws.cell(row=name_row, column=c).value for c in range(2, 10)]
+        self.assertEqual(name_cells[4], 'short_a[3:0]',
+                         "low bits signal must sit on the right (bit 0 region)")
+        # 左侧高位区（bit 7..4）应为空
+        self.assertTrue(all(v in (None, "") for v in name_cells[:4]),
+                        "high bit region must be empty")
+
+    def test_cross_byte_default_value_masked(self):
+        """跨字节信号的 Default 行，每段只显示该字节内对应的局部 bit 值，
+        而非整信号的完整 value。"""
+        try:
+            import openpyxl
+        except ImportError:
+            self.skipTest("openpyxl not available")
+
+        # long_signal = 0xABCD，占 bit 4..19
+        # Byte 0 覆盖 bit 7:4 of sig → (0xABCD >> 4) & 0xF = 0xD
+        # Byte 1 覆盖 → 0xBC
+        # Byte 2 覆盖 bit 19:16 → 0xA
+        segments = {
+            'short_a': {'start_bit': 0, 'end_bit': 3, 'width': 4, 'value': 0x5},
+            'long_signal': {'start_bit': 4, 'end_bit': 19, 'width': 16, 'value': 0xABCD},
+            'short_b': {'start_bit': 20, 'end_bit': 23, 'width': 4, 'value': 0x3}
+        }
+        output_file = os.path.join(self.temp_dir.name, "xbyte.xlsx")
+        self.parser.generate_byte_table_excel(segments, output_file)
+
+        wb = openpyxl.load_workbook(output_file)
+        ws = wb.active
+
+        def byte_header_row(name):
+            for r in range(1, ws.max_row + 1):
+                if ws.cell(row=r, column=1).value == name:
+                    return r
+            self.fail(f"Missing {name} row")
+
+        def default_row_vals(byte_header_row):
+            r = byte_header_row + 2  # Byte row -> Name row -> Default row
+            return [ws.cell(row=r, column=c).value for c in range(2, 10)]
+
+        v0 = [str(x).lower() for x in default_row_vals(byte_header_row("Byte 0"))
+              if x not in (None, "")]
+        v1 = [str(x).lower() for x in default_row_vals(byte_header_row("Byte 1"))
+              if x not in (None, "")]
+        v2 = [str(x).lower() for x in default_row_vals(byte_header_row("Byte 2"))
+              if x not in (None, "")]
+
+        # Byte 0: long_signal 局部 = 0xD, short_a = 0x5（不能出现完整 0xABCD）
+        self.assertIn('0xd', v0)
+        self.assertIn('0x5', v0)
+        self.assertNotIn('0xabcd', v0,
+                         "Byte 0 must NOT show full signal value")
+        # Byte 1: long_signal 局部 = 0xBC
+        self.assertIn('0xbc', v1)
+        # Byte 2: short_b=0x3, long_signal 局部 = 0xA
+        self.assertIn('0xa', v2)
+        self.assertIn('0x3', v2)
+
 
 class TestExcelFileOperations(unittest.TestCase):
     """测试 Excel 文件操作"""
