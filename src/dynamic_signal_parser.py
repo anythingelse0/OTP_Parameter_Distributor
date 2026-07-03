@@ -921,13 +921,12 @@ class DynamicSignalParser:
             ws.cell(row=current_row, column=1, value="Name")
             ws.cell(row=current_row, column=1).font = header_font
 
-            # 处理每个 bit 列（2-9 对应 bit 7-0）
+            # 处理每个 bit 列（2-9 对应 bit 7-0，bit 7 在左、bit 0 在右，与表头一致）
             col_idx = 2  # 从第 2 列开始（bit 7）
 
             while col_idx <= 9:
-                # 计算当前列对应的 bit 位置
-                bit_pos = 9 - col_idx  # col 2 -> bit 7, col 3 -> bit 6, ..., col 9 -> bit 0
-                bit_in_byte = 7 - bit_pos
+                # col 2 -> bit_in_byte 7，col 9 -> bit_in_byte 0，与标题行的 7..0 一致
+                bit_in_byte = 9 - col_idx
 
                 # 查找该 bit 位置所属的信号
                 found_signal = None
@@ -1016,8 +1015,8 @@ class DynamicSignalParser:
             col_idx = 2
 
             while col_idx <= 9:
-                bit_pos = 9 - col_idx
-                bit_in_byte = 7 - bit_pos
+                # col 2 -> bit_in_byte 7，col 9 -> bit_in_byte 0，与标题行的 7..0 一致
+                bit_in_byte = 9 - col_idx
 
                 found_signal = None
                 found_seg = None
@@ -1048,6 +1047,14 @@ class DynamicSignalParser:
 
                     # 生成 value 文本
                     value = found_seg.get('value', 0)
+                    # 跨字节信号逐段截取局部 bit：保留本字节覆盖范围内对应的 bit，
+                    # 而非把整信号 value 放到每一段（每段只显示属于本字节的局部值）
+                    sig_start = found_seg['start_bit']
+                    seg_full_end = found_seg['end_bit']
+                    if sig_start != seg_full_end or cover_bits < (seg_full_end - sig_start + 1):
+                        cover_mask = (1 << cover_bits) - 1
+                        shift = min(seg_full_end, byte_end) - seg_start - (cover_bits - 1)
+                        value = (value >> shift) & cover_mask
                     if value == 0:
                         value_text = "0x0"
                     elif value < 16:
